@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Virtual Pet Simulator</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .glass {
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+
+    .pet-bounce {
+      animation: bounce 0.6s ease;
+    }
+
+    .pet-wiggle {
+      animation: wiggle 0.6s ease;
+    }
+
+    .pet-sleep {
+      animation: sleep 1.5s ease-in-out infinite;
+    }
+
+    .pet-shake {
+      animation: shake 0.45s ease;
+    }
+
+    .pet-pop {
+      animation: pop 0.45s ease;
+    }
+
+    @keyframes bounce {
+      0% { transform: translateY(0) scale(1); }
+      40% { transform: translateY(-22px) scale(1.08); }
+      70% { transform: translateY(4px) scale(0.98); }
+      100% { transform: translateY(0) scale(1); }
+    }
+
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(-9deg); }
+      75% { transform: rotate(9deg); }
+    }
+
+    @keyframes sleep {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-10px); }
+      75% { transform: translateX(10px); }
+    }
+
+    @keyframes pop {
+      0% { transform: scale(0.8); opacity: 0.5; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .stat-fill {
+      transition: width 0.4s ease, background-color 0.4s ease;
+    }
+
+    .pet-card {
+      transition: all 0.25s ease;
+    }
+
+    .pet-card:hover {
+      transform: translateY(-3px);
+    }
+
+    .pet-card.selected {
+      transform: translateY(-3px);
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.35);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    .terminal {
+      font-family: "Courier New", monospace;
+    }
+
+    /* ---------------------------------------------------------
+       Pet artwork: full illustrated body, simple cute face.
+       The SAME element (#petEmoji) that used to hold a text emoji
+       now holds an inline SVG, so all the existing reaction
+       animations above still apply to it unchanged.
+    --------------------------------------------------------- */
+    #petEmoji {
+      width: 170px;
+      margin: 0 auto;
+      user-select: none;
+    }
+    #petEmoji svg { display: block; width: 100%; height: auto; }
+
+    #petEmoji .eyes-closed { display: none; }
+    #petEmoji.pet-sleep .eyes-open   { display: none; }
+    #petEmoji.pet-sleep .eyes-closed { display: block; }
+
+    /* a little extra life on top of the shared keyframes above */
+    #petEmoji .tail  { transform-box: fill-box; transform-origin: 10% 85%; }
+    #petEmoji.pet-wiggle .tail { animation: wag 0.18s ease-in-out infinite; }
+    @keyframes wag {
+      0%, 100% { transform: rotate(-14deg); }
+      50%      { transform: rotate(14deg); }
+    }
+    #petEmoji .ear { transform-box: fill-box; transform-origin: 50% 100%; transition: transform .3s ease; }
+    #petEmoji.pet-bounce .ear { transform: translateY(-3px) rotate(-3deg); }
+
+    @media (prefers-reduced-motion: reduce) {
+      #petEmoji, #petEmoji * { animation-duration: 0.001ms !important; }
+    }
+  </style>
+</head>
+
+<body class="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900 text-slate-900">
+
+  <!-- Header -->
+  <header class="border-b border-white/10 bg-black/20">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-black text-white">
+          🐾 Virtual Pet Simulator
+        </h1>
+      </div>
+
+      <div class="hidden sm:flex items-center gap-2 text-xs text-green-300">
+        <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+        SIMULATION ONLINE
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6 sm:py-10">
+
+    <!-- Pet Selection -->
+    <section class="mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 class="text-xl font-bold text-white">
+            Select Your Pet
+          </h2>
+          <p class="text-sm text-slate-400">
+            Choose an animal for the simulation.
+          </p>
+        </div>
+
+        <div class="terminal hidden sm:block text-xs text-purple-300">
+          PET_DB_v1.0
+        </div>
+      </div>
+
+      <div id="petSelector"
+           class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      </div>
+    </section>
+
+
+    <!-- Main Simulation -->
+    <section class="grid lg:grid-cols-2 gap-6">
+
+      <!-- Pet Display -->
+      <div id="simulationPanel"
+           class="glass rounded-3xl p-5 sm:p-7 shadow-2xl">
+
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <p class="text-xs font-bold tracking-widest text-purple-600">
+              CURRENT SUBJECT
+            </p>
+
+            <h2 id="petName"
+                class="text-3xl font-black text-slate-800">
+              Buddy
+            </h2>
+          </div>
+
+          <div id="statusBadge"
+               class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold">
+            ● ACTIVE
+          </div>
+        </div>
+
+        <!-- Pet -->
+        <div id="petStage"
+             class="rounded-3xl min-h-[280px] flex flex-col items-center justify-center
+                    bg-gradient-to-br from-purple-100 via-pink-50 to-blue-100
+                    relative overflow-hidden">
+
+          <div class="absolute top-4 left-4 text-xs text-slate-400 terminal">
+            SENSOR_ARRAY: OK
+          </div>
+
+          <div class="absolute top-4 right-4 text-xs text-slate-400 terminal">
+            LIVE
+          </div>
+
+          <div id="petEmoji" role="img" aria-label="Current virtual pet"></div>
+
+          <div id="petMood"
+               class="mt-3 px-4 py-2 rounded-full bg-white/80 shadow-sm
+                      text-sm font-bold text-purple-700">
+            Feeling great!
+          </div>
+        </div>
+
+        <!-- Message -->
+        <div id="message"
+             aria-live="polite"
+             class="mt-4 min-h-[28px] text-center text-lg font-bold text-purple-700">
+          Welcome to the Virtual Pet Lab!
+        </div>
+
+        <!-- Controls -->
+        <div class="grid grid-cols-3 gap-2 sm:gap-3 mt-5">
+
+          <button id="feedBtn"
+                  class="min-h-[72px] rounded-2xl bg-orange-500 hover:bg-orange-600
+                         text-white font-bold shadow-lg transition active:scale-95
+                         focus:outline-none focus:ring-4 focus:ring-orange-200">
+            <span class="text-2xl">🍎</span>
+            <span class="block text-sm mt-1">Feed</span>
+          </button>
+
+          <button id="playBtn"
+                  class="min-h-[72px] rounded-2xl bg-purple-600 hover:bg-purple-700
+                         text-white font-bold shadow-lg transition active:scale-95
+                         focus:outline-none focus:ring-4 focus:ring-purple-200">
+            <span class="text-2xl">🎮</span>
+            <span class="block text-sm mt-1">Play</span>
+          </button>
+
+          <button id="restBtn"
+                  class="min-h-[72px] rounded-2xl bg-blue-500 hover:bg-blue-600
+                         text-white font-bold shadow-lg transition active:scale-95
+                         focus:outline-none focus:ring-4 focus:ring-blue-200">
+            <span class="text-2xl">😴</span>
+            <span class="block text-sm mt-1">Rest</span>
+          </button>
+
+        </div>
+
+        <button id="resetBtn"
+                class="w-full mt-3 py-3 rounded-2xl border-2 border-slate-200
+                       hover:bg-slate-50 font-bold text-slate-600 transition">
+          🔄 Reset Simulation
+        </button>
+
+      </div>
+
+
+      <!-- Monitoring Panel -->
+      <div class="glass rounded-3xl p-5 sm:p-7 shadow-2xl">
+
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <p class="text-xs font-bold tracking-widest text-purple-600">
+            
+            </p>
+
+            <h2 class="text-2xl font-black">
+              Pet Monitor
+            </h2>
+          </div>
+
+          <div class="text-xs terminal text-slate-400">
+            0xPET
+          </div>
+        </div>
+
+
+        <!-- Happiness -->
+        <div class="mb-5">
+          <div class="flex justify-between mb-2">
+            <span class="font-bold">❤️ Happiness</span>
+            <span id="happinessValue" class="font-black">75%</span>
+          </div>
+
+          <div class="h-4 bg-slate-200 rounded-full overflow-hidden">
+            <div id="happinessBar"
+                 class="stat-fill h-full bg-pink-500 rounded-full"
+                 style="width:75%">
+            </div>
+          </div>
+        </div>
+
+
+        <!-- Hunger -->
+        <div class="mb-5">
+          <div class="flex justify-between mb-2">
+            <span class="font-bold">🍖 Hunger</span>
+            <span id="hungerValue" class="font-black">70%</span>
+          </div>
+
+          <div class="h-4 bg-slate-200 rounded-full overflow-hidden">
+            <div id="hungerBar"
+                 class="stat-fill h-full bg-orange-500 rounded-full"
+                 style="width:70%">
+            </div>
+          </div>
+        </div>
+
+
+        <!-- Energy -->
+        <div class="mb-5">
+          <div class="flex justify-between mb-2">
+            <span class="font-bold">⚡ Energy</span>
+            <span id="energyValue" class="font-black">80%</span>
+          </div>
+
+          <div class="h-4 bg-slate-200 rounded-full overflow-hidden">
+            <div id="energyBar"
+                 class="stat-fill h-full bg-yellow-400 rounded-full"
+                 style="width:80%">
+            </div>
+          </div>
+        </div>
+
+
+        <!-- Health -->
+        <div class="mb-6">
+          <div class="flex justify-between mb-2">
+            <span class="font-bold">💚 Health</span>
+            <span id="healthValue" class="font-black">95%</span>
+          </div>
+
+          <div class="h-4 bg-slate-200 rounded-full overflow-hidden">
+            <div id="healthBar"
+                 class="stat-fill h-full bg-green-500 rounded-full"
+                 style="width:95%">
+            </div>
+          </div>
+        </div>
+
+
+        <!-- Engineering Data -->
+        <div class="rounded-2xl bg-slate-900 text-white p-4 terminal text-xs">
+          <div class="text-purple-300 mb-3">
+            &gt; REAL_TIME_DIAGNOSTICS
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              UPTIME
+              <span id="uptime" class="text-green-300 block">
+                00:00:00
+              </span>
+            </div>
+
+            <div>
+              CYCLES
+              <span id="cycles" class="text-green-300 block">
+                0
+              </span>
+            </div>
+
+            <div>
+              STATE
+              <span id="systemState" class="text-green-300 block">
+                STABLE
+              </span>
+            </div>
+
+            <div>
+              MOOD
+              <span id="systemMood" class="text-green-300 block">
+                HAPPY
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- Pet Information -->
+    <section class="mt-6 glass rounded-3xl p-5 sm:p-7">
+
+      <div class="mb-6">
+        <p class="text-xs font-bold tracking-widest text-purple-600">
+          ANIMAL DATABASE
+        </p>
+
+        <h2 class="text-2xl sm:text-3xl font-black">
+          About <span id="infoPetName">Buddy</span>
+        </h2>
+
+        <p class="text-slate-500 mt-1">
+          Biological and behavioral reference data for the selected pet.
+        </p>
+      </div>
+
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+        <div class="bg-purple-50 rounded-2xl p-4">
+          <div class="text-2xl mb-2">🧬</div>
+          <p class="text-xs uppercase font-bold text-purple-500">
+            Lifespan
+          </p>
+          <p id="lifespan" class="font-bold mt-1">
+            10–13 years
+          </p>
+        </div>
+
+        <div class="bg-orange-50 rounded-2xl p-4">
+          <div class="text-2xl mb-2">🍖</div>
+          <p class="text-xs uppercase font-bold text-orange-500">
+            Favorite Food
+          </p>
+          <p id="favoriteFood" class="font-bold mt-1">
+            Chicken & carrots
+          </p>
+        </div>
+
+        <div class="bg-blue-50 rounded-2xl p-4">
+          <div class="text-2xl mb-2">😴</div>
+          <p class="text-xs uppercase font-bold text-blue-500">
+            Sleep Needed
+          </p>
+          <p id="sleep" class="font-bold mt-1">
+            12–14 hours/day
+          </p>
+        </div>
+
+        <div class="bg-pink-50 rounded-2xl p-4">
+          <div class="text-2xl mb-2">🎯</div>
+          <p class="text-xs uppercase font-bold text-pink-500">
+            Hobbies
+          </p>
+          <p id="hobbies" class="font-bold mt-1">
+            Fetch, walks & toys
+          </p>
+        </div>
+
+      </div>
+
+
+      <div class="mt-5 rounded-2xl bg-gradient-to-r from-purple-600 to-blue-600
+                  text-white p-5">
+
+        <div class="flex gap-3">
+          <div class="text-3xl">🔬</div>
+
+          <div>
+            <p class="text-xs uppercase font-bold text-purple-200">
+              Interesting Fact
+            </p>
+
+            <p id="fact" class="mt-1 font-semibold">
+              Dogs have an extraordinary sense of smell and can learn many commands.
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+
+      <div class="mt-5 grid sm:grid-cols-2 gap-4">
+
+        <div class="rounded-2xl bg-slate-50 p-4">
+          <p class="text-xs font-bold uppercase text-slate-400">
+            Natural Behavior
+          </p>
+
+          <p id="behavior"
+             class="font-semibold mt-1 text-slate-700">
+            Social, playful and loyal.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-slate-50 p-4">
+          <p class="text-xs font-bold uppercase text-slate-400">
+            Care Note
+          </p>
+
+          <p id="care"
+             class="font-semibold mt-1 text-slate-700">
+            Requires exercise, social interaction and balanced nutrition.
+          </p>
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- Footer -->
+    <footer class="text-center text-slate-400 text-sm py-8">
+      <p>
+        🧪 Virtual Pet Lab · Built with HTML5 + Tailwind CSS + Vanilla JavaScript
+      </p>
+    </footer>
+
+  </main>
+
+
+<script>
+/*
+  ============================================
+  VIRTUAL PET LAB
+  Main JavaScript
+  ============================================
+*/
+
+
+// --------------------------------------------
+// PET ARTWORK
+// Full illustrated body per species; the face
+// stays simple and cute on purpose (round eyes,
+// one soft mouth line) rather than photoreal.
+// --------------------------------------------
+
+const PET_ART = {
+
+  dog: `
+    <svg viewBox="0 0 200 200" role="img" aria-label="Buddy the dog">
+      <defs>
+        <linearGradient id="dogBody" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#F0C583"/><stop offset="1" stop-color="#C5883F"/>
+        </linearGradient>
+        <radialGradient id="dogHead" cx="40%" cy="30%" r="78%">
+          <stop offset="0" stop-color="#F8D9A6"/><stop offset="1" stop-color="#CF9750"/>
+        </radialGradient>
+      </defs>
+      <ellipse cx="100" cy="187" rx="60" ry="9" fill="#2F2352" opacity=".13"/>
+      <path class="tail" d="M144 150 q30 -4 28 -30 q-2 -14 -13 -15 q11 15 -1 28 q-8 9 -18 10z" fill="#C5883F"/>
+      <ellipse cx="100" cy="150" rx="50" ry="37" fill="url(#dogBody)"/>
+      <ellipse cx="100" cy="160" rx="27" ry="25" fill="#F9E9CC" opacity=".9"/>
+      <rect x="71" y="158" width="18" height="29" rx="9" fill="#D9A45B"/>
+      <rect x="111" y="158" width="18" height="29" rx="9" fill="#D9A45B"/>
+      <ellipse cx="80" cy="186" rx="12" ry="6" fill="#F9E9CC"/>
+      <ellipse cx="120" cy="186" rx="12" ry="6" fill="#F9E9CC"/>
+      <path class="ear" d="M64 60 q-25 5 -27 35 q-2 27 15 34 q14 5 17 -11 q-13 -11 -10 -31z" fill="#B37731"/>
+      <path class="ear" d="M136 60 q25 5 27 35 q2 27 -15 34 q-14 5 -17 -11 q13 -11 10 -31z" fill="#B37731"/>
+      <ellipse cx="100" cy="89" rx="44" ry="40" fill="url(#dogHead)"/>
+      <ellipse cx="100" cy="70" rx="10" ry="17" fill="#F9E9CC" opacity=".5"/>
+      <ellipse cx="100" cy="109" rx="26" ry="19" fill="#F9E9CC"/>
+      <g class="eyes-open">
+        <ellipse cx="80" cy="82" rx="8.5" ry="9.5" fill="#37281F"/>
+        <ellipse cx="120" cy="82" rx="8.5" ry="9.5" fill="#37281F"/>
+        <circle cx="83" cy="78" r="3.2" fill="#fff"/><circle cx="123" cy="78" r="3.2" fill="#fff"/>
+      </g>
+      <g class="eyes-closed" fill="none" stroke="#37281F" stroke-width="4.5" stroke-linecap="round">
+        <path d="M71 83 q9 8 18 0"/><path d="M111 83 q9 8 18 0"/>
+      </g>
+      <path d="M88 99 q12 -9 24 0 q1 12 -12 15 q-13 -3 -12 -15z" fill="#37281F"/>
+      <ellipse cx="94" cy="100" rx="4" ry="2.4" fill="#fff" opacity=".35"/>
+      <path d="M100 105 v5 M100 110 q-10 9 -17 1 M100 110 q10 9 17 1" fill="none" stroke="#37281F" stroke-width="4.2" stroke-linecap="round"/>
+    </svg>`,
+
+  cat: `
+    <svg viewBox="0 0 200 200" role="img" aria-label="Luna the cat">
+      <defs>
+        <linearGradient id="catBody" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#BFC6D4"/><stop offset="1" stop-color="#828A9D"/>
+        </linearGradient>
+        <radialGradient id="catHead" cx="40%" cy="30%" r="78%">
+          <stop offset="0" stop-color="#C9D0DC"/><stop offset="1" stop-color="#8B93A6"/>
+        </radialGradient>
+      </defs>
+      <ellipse cx="100" cy="187" rx="58" ry="9" fill="#2F2352" opacity=".13"/>
+      <path class="tail" d="M146 158 q30 6 28 -24 q-2 -20 -15 -22" stroke="#828A9D" stroke-width="13" fill="none" stroke-linecap="round"/>
+      <ellipse cx="100" cy="153" rx="45" ry="34" fill="url(#catBody)"/>
+      <ellipse cx="100" cy="162" rx="24" ry="22" fill="#EEF0F5" opacity=".85"/>
+      <g stroke="#6E7687" stroke-width="4" stroke-linecap="round" opacity=".45" fill="none">
+        <path d="M66 140 q8 5 14 2"/><path d="M64 152 q9 5 15 2"/>
+        <path d="M134 140 q-8 5 -14 2"/><path d="M136 152 q-9 5 -15 2"/>
+      </g>
+      <rect x="77" y="160" width="17" height="27" rx="8.5" fill="#A2AABB"/>
+      <rect x="106" y="160" width="17" height="27" rx="8.5" fill="#A2AABB"/>
+      <ellipse cx="85" cy="186" rx="11" ry="6" fill="#EEF0F5"/><ellipse cx="115" cy="186" rx="11" ry="6" fill="#EEF0F5"/>
+      <path class="ear" d="M62 68 L55 24 L95 52 Z" fill="#A2AABB"/>
+      <path class="ear" d="M138 68 L145 24 L105 52 Z" fill="#A2AABB"/>
+      <path d="M65 63 L61 36 L86 53 Z" fill="#F0A9B8"/><path d="M135 63 L139 36 L114 53 Z" fill="#F0A9B8"/>
+      <ellipse cx="100" cy="85" rx="42" ry="37" fill="url(#catHead)"/>
+      <g class="eyes-open">
+        <ellipse cx="80" cy="83" rx="10" ry="11" fill="#95CC5C"/><ellipse cx="120" cy="83" rx="10" ry="11" fill="#95CC5C"/>
+        <ellipse cx="80" cy="83" rx="2.8" ry="9" fill="#2A2620"/><ellipse cx="120" cy="83" rx="2.8" ry="9" fill="#2A2620"/>
+        <circle cx="84" cy="78" r="2.6" fill="#fff"/><circle cx="124" cy="78" r="2.6" fill="#fff"/>
+      </g>
+      <g class="eyes-closed" fill="none" stroke="#3B3830" stroke-width="4.5" stroke-linecap="round">
+        <path d="M71 84 q9 8 18 0"/><path d="M111 84 q9 8 18 0"/>
+      </g>
+      <ellipse cx="90" cy="104" rx="14" ry="10" fill="#EEF0F5"/><ellipse cx="110" cy="104" rx="14" ry="10" fill="#EEF0F5"/>
+      <path d="M93 96 h14 l-7 8 z" fill="#F0909F"/>
+      <g stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity=".85">
+        <path d="M78 101 L44 94"/><path d="M78 106 L42 106"/><path d="M122 101 L156 94"/><path d="M122 106 L158 106"/>
+      </g>
+      <path d="M100 104 v4 M100 108 q-8 7 -14 0 M100 108 q8 7 14 0" fill="none" stroke="#5E564B" stroke-width="3.8" stroke-linecap="round"/>
+    </svg>`,
+
+  rabbit: `
+    <svg viewBox="0 0 200 200" role="img" aria-label="Mochi the rabbit">
+      <defs>
+        <linearGradient id="rabBody" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#F8F1E9"/><stop offset="1" stop-color="#D9C6B4"/>
+        </linearGradient>
+        <radialGradient id="rabHead" cx="40%" cy="28%" r="80%">
+          <stop offset="0" stop-color="#FFFAF4"/><stop offset="1" stop-color="#E2D2C2"/>
+        </radialGradient>
+      </defs>
+      <ellipse cx="100" cy="188" rx="56" ry="9" fill="#2F2352" opacity=".13"/>
+      <circle class="tail" cx="56" cy="152" r="13" fill="#FFFBF6"/>
+      <ellipse cx="100" cy="155" rx="42" ry="33" fill="url(#rabBody)"/>
+      <ellipse cx="100" cy="164" rx="23" ry="21" fill="#FFFBF6" opacity=".9"/>
+      <ellipse cx="76" cy="182" rx="19" ry="9" fill="#FFFBF6"/><ellipse cx="124" cy="182" rx="19" ry="9" fill="#FFFBF6"/>
+      <g class="ear">
+        <ellipse cx="80" cy="46" rx="12" ry="35" fill="#EFE3D7" transform="rotate(-11 80 46)"/>
+        <ellipse cx="80" cy="48" rx="6" ry="26" fill="#F3B6C0" transform="rotate(-11 80 48)"/>
+      </g>
+      <g class="ear">
+        <ellipse cx="120" cy="46" rx="12" ry="35" fill="#EFE3D7" transform="rotate(11 120 46)"/>
+        <ellipse cx="120" cy="48" rx="6" ry="26" fill="#F3B6C0" transform="rotate(11 120 48)"/>
+      </g>
+      <ellipse cx="100" cy="101" rx="37" ry="33" fill="url(#rabHead)"/>
+      <ellipse cx="74" cy="110" rx="16" ry="13" fill="#FFFBF6"/><ellipse cx="126" cy="110" rx="16" ry="13" fill="#FFFBF6"/>
+      <g class="eyes-open">
+        <ellipse cx="82" cy="96" rx="8" ry="9" fill="#4A3A32"/><ellipse cx="118" cy="96" rx="8" ry="9" fill="#4A3A32"/>
+        <circle cx="85" cy="92" r="3" fill="#fff"/><circle cx="121" cy="92" r="3" fill="#fff"/>
+      </g>
+      <g class="eyes-closed" fill="none" stroke="#4A3A32" stroke-width="4.2" stroke-linecap="round">
+        <path d="M74 97 q8 7 16 0"/><path d="M110 97 q8 7 16 0"/>
+      </g>
+      <path d="M95 99 q5 -5 10 0 q-2 6 -5 7 q-3 -1 -5 -7z" fill="#F0909F"/>
+      <g stroke="#CBB8A6" stroke-width="2" stroke-linecap="round" opacity=".9">
+        <path d="M82 106 L52 100"/><path d="M82 110 L52 112"/><path d="M118 106 L148 100"/><path d="M118 110 L148 112"/>
+      </g>
+      <path d="M100 106 v4 M100 110 q-7 6 -12 0 M100 110 q7 6 12 0" fill="none" stroke="#6B5648" stroke-width="3.6" stroke-linecap="round"/>
+    </svg>`,
+
+  parrot: `
+    <svg viewBox="0 0 200 200" role="img" aria-label="Rio the parrot">
+      <defs>
+        <linearGradient id="parBody" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#7BD463"/><stop offset="1" stop-color="#3A9646"/>
+        </linearGradient>
+        <radialGradient id="parHead" cx="38%" cy="28%" r="80%">
+          <stop offset="0" stop-color="#8FE070"/><stop offset="1" stop-color="#46A24C"/>
+        </radialGradient>
+      </defs>
+      <ellipse cx="100" cy="190" rx="52" ry="7" fill="#2F2352" opacity=".13"/>
+      <path class="tail" d="M112 162 q22 16 30 34 q-22 0 -34 -18z" fill="#2F8ACB"/>
+      <path class="tail" d="M104 166 q10 18 12 32 q-16 -4 -22 -22z" fill="#4FB0E8"/>
+      <rect x="36" y="176" width="128" height="11" rx="5.5" fill="#A0734A"/>
+      <rect x="36" y="176" width="128" height="4" rx="2" fill="#BB8C5F"/>
+      <ellipse cx="100" cy="132" rx="38" ry="44" fill="url(#parBody)"/>
+      <ellipse cx="100" cy="144" rx="23" ry="29" fill="#F2D24B" opacity=".92"/>
+      <path d="M131 104 q19 24 11 52 q-6 17 -19 19 q11 -35 -2 -64z" fill="#369044"/>
+      <g stroke="#28763A" stroke-width="2.4" fill="none" opacity=".8">
+        <path d="M133 118 q10 18 6 38"/><path d="M127 116 q10 20 5 40"/>
+      </g>
+      <path d="M86 44 q6 -16 14 -18 q-2 10 2 18z" fill="#F2D24B"/>
+      <path d="M100 42 q10 -14 18 -12 q-8 6 -10 16z" fill="#E86A4E"/>
+      <circle cx="100" cy="79" r="34" fill="url(#parHead)"/>
+      <ellipse cx="100" cy="88" rx="23" ry="19" fill="#FAF2DC"/>
+      <g class="eyes-open">
+        <circle cx="82" cy="72" r="9.5" fill="#FAF2DC"/><circle cx="118" cy="72" r="9.5" fill="#FAF2DC"/>
+        <circle cx="83" cy="72" r="5.2" fill="#2A2620"/><circle cx="119" cy="72" r="5.2" fill="#2A2620"/>
+        <circle cx="85" cy="69.5" r="1.9" fill="#fff"/><circle cx="121" cy="69.5" r="1.9" fill="#fff"/>
+      </g>
+      <g class="eyes-closed" fill="none" stroke="#2A2620" stroke-width="4" stroke-linecap="round">
+        <path d="M74 73 q8 7 16 0"/><path d="M110 73 q8 7 16 0"/>
+      </g>
+      <path d="M88 86 q12 -7 23 2 q1 19 -11 25 q-12 -7 -12 -27z" fill="#55555F"/>
+      <path d="M92 88 q8 -4 15 1 q0 5 -7 7 q-7 -2 -8 -8z" fill="#6E6E7A"/>
+      <path d="M90 99 q10 6 20 -2" fill="none" stroke="#2F2F38" stroke-width="3.4" stroke-linecap="round"/>
+      <g fill="#C8973F">
+        <path d="M84 162 q-2 12 -8 16 h20 q-4 -6 -4 -16z"/>
+        <path d="M116 162 q2 12 8 16 h-20 q4 -6 4 -16z"/>
+      </g>
+    </svg>`
+};
+
+
+// --------------------------------------------
+// PET DATABASE
+// --------------------------------------------
+
+const pets = {
+
+  dog: {
+    name: "Sherrr",
+    emoji: "🐶",
+    lifespan: "10–13 years",
+    favoriteFood: "Chicken, carrots & balanced dog food",
+    sleep: "12–14 hours/day",
+    hobbies: "Fetch, walks & chewing toys",
+    fact: "Dogs have an extraordinary sense of smell and can learn many commands.",
+    behavior: "Social, playful and loyal.",
+    care: "Requires exercise, social interaction and balanced nutrition.",
+
+    stats: {
+      happiness: 75,
+      hunger: 70,
+      energy: 80,
+      health: 95
+    },
+
+    changes: {
+      feed: { happiness: 5, hunger: 18, energy: 5 },
+      play: { happiness: 18, hunger: -5, energy: -16 },
+      rest: { happiness: 2, hunger: -4, energy: 25 }
+    }
+  },
+
+
+  cat: {
+    name: "Billu",
+    emoji: "🐱",
+    lifespan: "12–18 years",
+    favoriteFood: "Fish, chicken & quality cat food",
+    sleep: "12–16 hours/day",
+    hobbies: "Climbing, chasing toys & exploring",
+    fact: "Cats use their whiskers to help sense nearby objects and spaces.",
+    behavior: "Independent, curious and playful.",
+    care: "Needs clean water, balanced food, enrichment and a safe environment.",
+
+    stats: {
+      happiness: 72,
+      hunger: 68,
+      energy: 88,
+      health: 96
+    },
+
+    changes: {
+      feed: { happiness: 6, hunger: 20, energy: 3 },
+      play: { happiness: 20, hunger: -4, energy: -12 },
+      rest: { happiness: 3, hunger: -3, energy: 30 }
+    }
+  },
+
+
+  parrot: {
+    name: "Hari Lal",
+    emoji: "🦜",
+    lifespan: "15–50+ years depending on species",
+    favoriteFood: "Seeds, fruits, vegetables & pellets",
+    sleep: "10–12 hours/day",
+    hobbies: "Talking, climbing & exploring",
+    fact: "Many parrots are highly intelligent and can learn sounds through repetition.",
+    behavior: "Social, vocal and highly curious.",
+    care: "Needs mental stimulation, social interaction and a varied diet.",
+
+    stats: {
+      happiness: 80,
+      hunger: 65,
+      energy: 86,
+      health: 94
+    },
+
+    changes: {
+      feed: { happiness: 7, hunger: 17, energy: 5 },
+      play: { happiness: 24, hunger: -5, energy: -18 },
+      rest: { happiness: 1, hunger: -3, energy: 28 }
+    }
+  },
+
+
+  rabbit: {
+    name: "Speedu",
+    emoji: "🐰",
+    lifespan: "8–12 years",
+    favoriteFood: "Hay, leafy greens & vegetables",
+    sleep: "8–12 hours/day",
+    hobbies: "Hopping, digging & exploring",
+    fact: "A rabbit's teeth continuously grow throughout its life.",
+    behavior: "Gentle, alert and energetic.",
+    care: "Needs constant access to hay, exercise and safe spaces to explore.",
+
+    stats: {
+      happiness: 74,
+      hunger: 76,
+      energy: 78,
+      health: 93
+    },
+
+    changes: {
+      feed: { happiness: 5, hunger: 22, energy: 4 },
+      play: { happiness: 17, hunger: -6, energy: -15 },
+      rest: { happiness: 2, hunger: -5, energy: 27 }
+    }
+  }
+
+};
+
+
+// --------------------------------------------
+// GAME STATE
+// --------------------------------------------
+
+let currentPet = "dog";
+
+let stats = {
+  happiness: 75,
+  hunger: 70,
+  energy: 80,
+  health: 95
+};
+
+let cycles = 0;
+let seconds = 0;
+
+
+// --------------------------------------------
+// DOM ELEMENTS
+// --------------------------------------------
+
+const petSelector = document.getElementById("petSelector");
+
+const petEmoji = document.getElementById("petEmoji");
+const petName = document.getElementById("petName");
+const petMood = document.getElementById("petMood");
+const message = document.getElementById("message");
+const statusBadge = document.getElementById("statusBadge");
+
+const feedBtn = document.getElementById("feedBtn");
+const playBtn = document.getElementById("playBtn");
+const restBtn = document.getElementById("restBtn");
+const resetBtn = document.getElementById("resetBtn");
+
+const happinessBar = document.getElementById("happinessBar");
+const hungerBar = document.getElementById("hungerBar");
+const energyBar = document.getElementById("energyBar");
+const healthBar = document.getElementById("healthBar");
+
+const happinessValue = document.getElementById("happinessValue");
+const hungerValue = document.getElementById("hungerValue");
+const energyValue = document.getElementById("energyValue");
+const healthValue = document.getElementById("healthValue");
+
+const uptime = document.getElementById("uptime");
+const cyclesDisplay = document.getElementById("cycles");
+const systemState = document.getElementById("systemState");
+const systemMood = document.getElementById("systemMood");
+
+
+// Information elements
+const infoPetName = document.getElementById("infoPetName");
+const lifespan = document.getElementById("lifespan");
+const favoriteFood = document.getElementById("favoriteFood");
+const sleep = document.getElementById("sleep");
+const hobbies = document.getElementById("hobbies");
+const fact = document.getElementById("fact");
+const behavior = document.getElementById("behavior");
+const care = document.getElementById("care");
+
+
+// --------------------------------------------
+// UTILITY
+// --------------------------------------------
+
+function clamp(value) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+
+function getCurrentPet() {
+  return pets[currentPet];
+}
+
+
+function updateStat(stat, amount) {
+  stats[stat] = clamp(stats[stat] + amount);
+}
+
+
+// Swap the illustrated body. Called only when the selected
+// species actually changes, never on every feed/play/rest tap.
+function setPetArt(id) {
+  petEmoji.innerHTML = PET_ART[id];
+  petEmoji.setAttribute("aria-label", pets[id].name + " the " + id);
+}
+
+
+// --------------------------------------------
+// PET SELECTOR
+// --------------------------------------------
+
+function createPetSelector() {
+
+  petSelector.innerHTML = "";
+
+  Object.entries(pets).forEach(([id, pet]) => {
+
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className =
+      "pet-card bg-white/90 rounded-2xl p-4 shadow-lg " +
+      "border border-white text-center focus:outline-none " +
+      "focus:ring-4 focus:ring-purple-300";
+
+    button.dataset.pet = id;
+
+    button.innerHTML = `
+      <div class="text-5xl mb-2">${pet.emoji}</div>
+
+      <div class="font-black text-slate-800">
+        ${pet.name}
+      </div>
+
+      <div class="text-xs text-slate-400 uppercase mt-1">
+        ${id}
+      </div>
+    `;
+
+    button.addEventListener("click", () => {
+      selectPet(id);
+    });
+
+    petSelector.appendChild(button);
+  });
+
+  updateSelectedPetCard();
+}
+
+
+function updateSelectedPetCard() {
+
+  document.querySelectorAll(".pet-card").forEach(card => {
+
+    card.classList.toggle(
+      "selected",
+      card.dataset.pet === currentPet
+    );
+
+  });
+}
+
+
+// --------------------------------------------
+// SELECT PET
+// --------------------------------------------
+
+function selectPet(id) {
+
+  if (!pets[id]) return;
+
+  currentPet = id;
+
+  const selected = pets[id];
+
+  stats = {
+    ...selected.stats
+  };
+
+  cycles = 0;
+
+  updatePetInformation();
+  updateUI();
+  updateSelectedPetCard();
+
+  petEmoji.classList.remove(
+    "pet-bounce", "pet-wiggle", "pet-sleep", "pet-shake", "pet-pop"
+  );
+  setPetArt(id);
+  void petEmoji.offsetWidth;
+  petEmoji.classList.add("pet-pop");
+
+  message.textContent = `Simulation switched to ${selected.name}!`;
+}
+
+
+// --------------------------------------------
+// PET INFORMATION
+// --------------------------------------------
+
+function updatePetInformation() {
+
+  const pet = getCurrentPet();
+
+  petName.textContent = pet.name;
+
+  infoPetName.textContent = pet.name;
+
+  lifespan.textContent = pet.lifespan;
+  favoriteFood.textContent = pet.favoriteFood;
+  sleep.textContent = pet.sleep;
+  hobbies.textContent = pet.hobbies;
+
+  fact.textContent = pet.fact;
+  behavior.textContent = pet.behavior;
+  care.textContent = pet.care;
+}
+
+
+// --------------------------------------------
+// STATUS BARS
+// --------------------------------------------
+
+function updateBar(bar, value, color) {
+
+  bar.style.width = `${value}%`;
+
+  bar.classList.remove(
+    "bg-red-500",
+    "bg-yellow-400",
+    "bg-green-500",
+    "bg-pink-500",
+    "bg-orange-500"
+  );
+
+  if (value <= 20) {
+    bar.classList.add("bg-red-500");
+  } else if (value <= 40) {
+    bar.classList.add("bg-yellow-400");
+  } else {
+    bar.classList.add(color);
+  }
+}
+
+
+function updateUI() {
+
+  // Keep everything within range.
+  Object.keys(stats).forEach(key => {
+    stats[key] = clamp(stats[key]);
+  });
+
+
+  // Values
+  happinessValue.textContent = `${stats.happiness}%`;
+  hungerValue.textContent = `${stats.hunger}%`;
+  energyValue.textContent = `${stats.energy}%`;
+  healthValue.textContent = `${stats.health}%`;
+
+
+  // Bars
+  updateBar(happinessBar, stats.happiness, "bg-pink-500");
+  updateBar(hungerBar, stats.hunger, "bg-orange-500");
+  updateBar(energyBar, stats.energy, "bg-yellow-400");
+  updateBar(healthBar, stats.health, "bg-green-500");
+
+
+  // Mood
+  const mood = getMood();
+
+  petMood.textContent = mood.text;
+  systemMood.textContent = mood.label;
+
+
+  // System state
+  if (stats.health <= 25) {
+    systemState.textContent = "CRITICAL";
+    systemState.className = "text-red-400 block";
+    statusBadge.textContent = "● CRITICAL";
+    statusBadge.className =
+      "px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-bold";
+  }
+
+  else if (
+    stats.hunger <= 20 ||
+    stats.energy <= 20
+  ) {
+    systemState.textContent = "WARNING";
+    systemState.className = "text-yellow-400 block";
+    statusBadge.textContent = "● NEEDS CARE";
+    statusBadge.className =
+      "px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-bold";
+  }
+
+  else {
+    systemState.textContent = "STABLE";
+    systemState.className = "text-green-400 block";
+    statusBadge.textContent = "● ACTIVE";
+    statusBadge.className =
+      "px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold";
+  }
+
+
+  // Button availability
+  feedBtn.disabled = stats.hunger >= 100;
+
+  playBtn.disabled = stats.energy < 10;
+
+  restBtn.disabled = stats.energy >= 100;
+}
+
+
+// --------------------------------------------
+// MOOD SYSTEM
+// --------------------------------------------
+
+function getMood() {
+
+  const average =
+    (stats.happiness + stats.hunger + stats.energy + stats.health) / 4;
+
+  if (stats.health <= 20) {
+    return { text: "I need help! 💔", label: "CRITICAL" };
+  }
+
+  if (stats.energy <= 20) {
+    return { text: "I'm very sleepy... 😴", label: "SLEEPY" };
+  }
+
+  if (stats.hunger <= 20) {
+    return { text: "My tummy is rumbling! 🍖", label: "HUNGRY" };
+  }
+
+  if (average >= 80) {
+    return { text: "Feeling fantastic! ✨", label: "EXCELLENT" };
+  }
+
+  if (average >= 60) {
+    return { text: "Feeling great! 😊", label: "HAPPY" };
+  }
+
+  if (average >= 40) {
+    return { text: "I'm doing okay.", label: "NORMAL" };
+  }
+
+  return { text: "I need some attention... 🥺", label: "LOW" };
+}
+
+
+// --------------------------------------------
+// ANIMATION / REACTION
+// (art no longer changes here — only the pose)
+// --------------------------------------------
+
+function showReaction(animation, text) {
+
+  petEmoji.classList.remove(
+    "pet-bounce",
+    "pet-wiggle",
+    "pet-sleep",
+    "pet-shake",
+    "pet-pop"
+  );
+
+  // Restart CSS animation.
+  void petEmoji.offsetWidth;
+
+  petEmoji.classList.add(animation);
+
+  message.textContent = text;
+}
+
+
+// --------------------------------------------
+// FEED
+// --------------------------------------------
+
+feedBtn.addEventListener("click", () => {
+
+  if (stats.hunger >= 100) {
+    message.textContent = "I'm already completely full! 😋";
+    return;
+  }
+
+  const changes = getCurrentPet().changes.feed;
+
+  updateStat("happiness", changes.happiness);
+  updateStat("hunger", changes.hunger);
+  updateStat("energy", changes.energy);
+
+  cycles++;
+
+  showReaction("pet-bounce", "Yum! Your pet is happy! 🍎");
+
+  updateUI();
+});
+
+
+// --------------------------------------------
+// PLAY
+// --------------------------------------------
+
+playBtn.addEventListener("click", () => {
+
+  if (stats.energy < 10) {
+    showReaction("pet-shake", "I'm too tired to play... 😴");
+    return;
+  }
+
+  const changes = getCurrentPet().changes.play;
+
+  updateStat("happiness", changes.happiness);
+  updateStat("hunger", changes.hunger);
+  updateStat("energy", changes.energy);
+
+  cycles++;
+
+  showReaction("pet-wiggle", "That was fun! 🎮");
+
+  updateUI();
+});
+
+
+// --------------------------------------------
+// REST
+// --------------------------------------------
+
+restBtn.addEventListener("click", () => {
+
+  if (stats.energy >= 100) {
+    message.textContent = "I'm already fully rested! ⚡";
+    return;
+  }
+
+  const changes = getCurrentPet().changes.rest;
+
+  updateStat("happiness", changes.happiness);
+  updateStat("hunger", changes.hunger);
+  updateStat("energy", changes.energy);
+
+  cycles++;
+
+  showReaction("pet-sleep", "Zzz... Resting...");
+
+  updateUI();
+
+  setTimeout(() => {
+    petEmoji.classList.remove("pet-sleep");
+  }, 2500);
+});
+
+
+// --------------------------------------------
+// RESET
+// --------------------------------------------
+
+resetBtn.addEventListener("click", () => {
+
+  stats = {
+    ...getCurrentPet().stats
+  };
+
+  cycles = 0;
+
+  petEmoji.classList.remove(
+    "pet-bounce",
+    "pet-wiggle",
+    "pet-sleep",
+    "pet-shake",
+    "pet-pop"
+  );
+
+  message.textContent = "Simulation reset successfully! 🔄";
+
+  updateUI();
+});
+
+
+// --------------------------------------------
+// NATURAL SIMULATION
+// --------------------------------------------
+
+setInterval(() => {
+
+  // Hunger slowly decreases.
+  updateStat("hunger", -1);
+
+  // Energy slowly decreases.
+  updateStat("energy", -1);
+
+  // Happiness slowly decreases.
+  updateStat("happiness", -0.5);
+
+
+  // Poor care affects health.
+  if (
+    stats.hunger < 15 ||
+    stats.energy < 15 ||
+    stats.happiness < 15
+  ) {
+    updateStat("health", -1);
+  }
+
+
+  // Good care slowly restores health.
+  if (
+    stats.hunger > 60 &&
+    stats.energy > 50 &&
+    stats.happiness > 60 &&
+    stats.health < 100
+  ) {
+    updateStat("health", 0.5);
+  }
+
+
+  updateUI();
+
+}, 5000);
+
+
+// --------------------------------------------
+// UPTIME CLOCK
+// --------------------------------------------
+
+setInterval(() => {
+
+  seconds++;
+
+  const hours =
+    String(Math.floor(seconds / 3600)).padStart(2, "0");
+
+  const minutes =
+    String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+
+  const secs =
+    String(seconds % 60).padStart(2, "0");
+
+  uptime.textContent =
+    `${hours}:${minutes}:${secs}`;
+
+  cyclesDisplay.textContent = cycles;
+
+}, 1000);
+
+
+// --------------------------------------------
+// INITIALIZE
+// --------------------------------------------
+
+createPetSelector();
+
+setPetArt(currentPet);
+
+updatePetInformation();
+
+updateUI();
+
+</script>
+
+</body>
+</html>
